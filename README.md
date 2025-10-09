@@ -7,7 +7,7 @@ It segments characters, classifies each one with **EasyOCR**, and (optionally) e
 
 ---
 
-## ✨ Features
+## Features
 
 - **End‑to‑end pipeline (per image):**
   1) Robust binarization (handles uneven lighting).
@@ -24,7 +24,7 @@ It segments characters, classifies each one with **EasyOCR**, and (optionally) e
 
 ---
 
-## 📦 Requirements
+## Requirements
 
 - Python 3.8+
 - Runtime packages:  
@@ -42,7 +42,7 @@ pip install easyocr opencv-python-headless numpy pandas scikit-learn matplotlib
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 ### 1) Process images only
 ```bash
@@ -70,7 +70,7 @@ python OCR_Def_with_metrics.py   --in_dir "./outputs_engi/plates"   --out_dir ".
 
 ---
 
-## 🧾 Outputs
+## Outputs
 
 ```
 out/
@@ -99,7 +99,7 @@ out/
 
 ---
 
-## 📚 Ground Truth Formats
+## Ground Truth Formats
 
 You can use **either**:
 1) **Two columns** (recommended):
@@ -120,7 +120,7 @@ You can use **either**:
 
 ---
 
-## 📈 Metrics (when `--gt_path` is provided)
+## Metrics (when `--gt_path` is provided)
 
 - **Exact‑match accuracy** (full plate equality).
 - **Char‑level metrics**: accuracy, precision/recall/F1 (micro & macro), full classification report.
@@ -131,7 +131,7 @@ Open `out/metrics/metrics.txt` after a run to see the numeric summary.
 
 ---
 
-## 🔧 Tips & Notes
+## Tips & Notes
 
 - Language: EasyOCR initialized with `['en']` is sufficient for digits and capital Latin letters.
 - Allowlist by position:
@@ -143,7 +143,7 @@ Open `out/metrics/metrics.txt` after a run to see the numeric summary.
 
 ---
 
-## ❗ Troubleshooting
+## Troubleshooting
 
 - **“No images found”**: check `--in_dir` path and that your images use one of the supported extensions. The search is recursive in subfolders.
 - **“No intersection between results.csv and GT on ‘image’”**: ensure that the GT **image identifiers** match the **basenames** written to `results.csv`. The evaluator lowercases and strips extensions. If your output names are like `plate00`, your GT must reference that same basename (not a numeric ID). You can also remap/rename either side for consistency.
@@ -152,7 +152,7 @@ Open `out/metrics/metrics.txt` after a run to see the numeric summary.
 
 ---
 
-## 🗂 Example Repo Structure
+## Example Repo Structure
 
 ```
 your-repo/
@@ -166,7 +166,7 @@ your-repo/
 
 ---
 
-## 🙏 Acknowledgements
+## Acknowledgements
 
 - [EasyOCR](https://github.com/JaidedAI/EasyOCR) and its PyTorch backend.
 
