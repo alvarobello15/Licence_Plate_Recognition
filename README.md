@@ -172,6 +172,6 @@ your-repo/
 
 ---
 
-## 📜 License
+## License
 
 Choose a license for your repository (e.g., MIT, Apache‑2.0). Add it as `LICENSE` at the repo root.
