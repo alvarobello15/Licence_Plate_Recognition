@@ -6,10 +6,10 @@ from ultralytics import YOLO
 
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
-# ---------- Helpers: Drive ----------
+
 def in_colab():
     try:
-        import google.colab  # noqa: F401
+        import google.colab  
         return True
     except Exception:
         return False
@@ -30,7 +30,10 @@ def mount_drive_if_needed():
 def is_in_drive(path):
     return os.path.abspath(path).startswith("/content/drive/")
 
-# ---------- IO ----------
+
+
+
+
 def iter_paths(src):
     if os.path.isdir(src):
         for ext in IMG_EXTS:
@@ -80,15 +83,13 @@ def main():
                     help="Imagen o carpeta (en Drive)")
     ap.add_argument("--outdir", default="/content/drive/MyDrive/yolo_outputs/predict_cv2/fotos_mobil",
                     help="Carpeta de salida (en Drive)")
-    ap.add_argument("--backup_drive_dir", default="/content/drive/MyDrive/yolo_outputs/predict_cv2_backups",
-                    help="Si outdir NO es Drive, al final copiaremos aquí")
     ap.add_argument("--conf", type=float, default=0.50)
     ap.add_argument("--imgsz", type=int, default=1280)
     ap.add_argument("--device", default=None, help="cpu, cuda o índice (0)")
     ap.add_argument("--show", action="store_true", help="Mostrar ventana CV2")
     args, _ = ap.parse_known_args()
 
-    # Montar Drive si hace falta (solo Colab)
+
     if (args.outdir.startswith("/content/drive") or args.backup_drive_dir.startswith("/content/drive")):
         mounted = mount_drive_if_needed()
         if not mounted:
@@ -134,7 +135,7 @@ def main():
             print("ℹ No se detectaron matrículas para recortar.")
         processed += 1
 
-        # Fuerza flush a disco (útil en Drive)
+
         os.sync() if hasattr(os, "sync") else None
 
         if args.show:
@@ -145,18 +146,7 @@ def main():
     if args.show:
         cv2.destroyAllWindows()
 
-    # --- Backup final si trabajaste fuera de Drive ---
-    if not is_in_drive(args.outdir):
-        if mount_drive_if_needed():
-            ts = time.strftime("%Y%m%d_%H%M%S")
-            dest = os.path.join(args.backup_drive_dir, f"run_{ts}")
-            print(f"[INFO] Copiando backup a Drive: {dest}")
-            shutil.copytree(args.outdir, dest, dirs_exist_ok=True)
-            print("✅ Backup completado.")
-        else:
-            print("[WARN] No se pudo hacer backup a Drive.")
-
-    print(f"[DONE] Imágenes procesadas: {processed}")
+    print(f"Process acabat: {processed}")
 
 if __name__ == "__main__":
     main()
