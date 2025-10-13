@@ -1,29 +1,30 @@
 # -*- coding: utf-8 -*-
 """
-OCR_Def.py — Segmentación carácter a carácter + EasyOCR (local, sin cloud)
+OCR_Def.py — Segmentació caràcter a caràcter + EasyOCR (tot local, sense cloud)
 
-Pipeline:
-  1) Binarización (texto blanco sobre negro) robusta a iluminación.
-  2) Segmentación por contornos → 7 caracteres ordenados (izq→der).
-  3) Normalización por recorte (64x64) manteniendo aspecto.
-  4) Clasificación EasyOCR por carácter con allowlist posicional:
-       - Posiciones 0..3: dígitos '0-9'
-       - Posiciones 4..6: letras válidas ES 'BCDFGHJKLMNPRSTVWXYZ'
-  5) Salidas:
-       - results.csv (todas las lecturas)
-       - all.txt / unique.txt
-       - overlays/*.jpg (placa con cajas y texto)
-       - crops/<img>/*.png (recortes normalizados)
-       - <img>.txt (matrícula detectada)
+Pipeline que fa:
+  1) Binarització de la imatge (text blanc sobre fons negre) que aguanta bé ambients amb llum variable.
+  2) Segmentació per contorns per trobar els 7 caràcters de la matrícula (ordenats d'esquerra a dreta).
+  3) Retalla i normalitza cada caràcter a mida 64x64, sense deformar.
+  4) Usa EasyOCR per reconèixer cada caràcter, amb filtres per posició:
+       - Posicions 0..3 → només xifres
+       - Posicions 4..6 → només lletres vàlides de matrícules d’Espanya
+  5) Genera sortides:
+       - CSV amb totes les lectures
+       - Fitxers amb totes les matrícules detectades i úniques
+       - Imatges amb les caixes dibuixades i text reconegut
+       - Carpeta amb recorts de caràcters
+       - Fitxer .txt amb la matrícula final de cada imatge
 
-Uso:
+Ús:
   python OCR_Def.py --in_dir "./outputs_engi/plates" --out_dir "./out/ocr_chars_easyocr_local" [--gpu]
 
-Requisitos:
+Requisits:
   pip install easyocr opencv-python-headless numpy pandas
-  # y PyTorch (CPU o GPU) para EasyOCR
+  # i PyTorch per fer anar l’EasyOCR
 """
 
+# Imports necessaris
 import os
 import re
 import cv2
@@ -36,33 +37,34 @@ from pathlib import Path
 from typing import List, Tuple
 import easyocr
 
-# ----------------------------
-# Parámetros y defaults
-# ----------------------------
+# Carpetes per defecte si no es passa res per paràmetre
 IN_DIR_DEFAULT  = "./outputs_engi/plates"
 OUT_DIR_DEFAULT = "./out/ocr_chars_easyocr_local"
 
-# Extensiones soportadas (recursivo)
+# Extensions d’imatges que acceptem
 IMG_GLOBS = (
     "*.jpg","*.jpeg","*.png","*.bmp","*.webp","*.tif","*.tiff",
     "*.JPG","*.JPEG","*.PNG","*.BMP","*.WEBP","*.TIF","*.TIFF"
 )
 
-# Conjuntos permitidos
+# Caràcters que deixem que apareguin (segons posició)
 DIGITOS = "0123456789"
-LETRAS  = "BCDFGHJKLMNPRSTVWXYZ"   # ES sin vocales ni Q/Ñ
-CHAR_H, CHAR_W = 64, 64            # tamaño normalización de recortes
+LETRAS  = "BCDFGHJKLMNPRSTVWXYZ"   # Lletres vàlides (sense vocals, Q ni Ñ)
+CHAR_H, CHAR_W = 64, 64            # mida dels recorts normalitzats
 
-# Correcciones suaves habituales
+# Correccions típiques per confusions (ex: una "S" que és un "5", etc)
 MAPA_DIG = str.maketrans({'D':'0','Q':'0','O':'0','U':'0','L':'1','I':'1','T':'7','Z':'2','S':'5','B':'8','G':'6'})
 MAPA_LET = str.maketrans({'0':'O','1':'I','2':'Z','5':'S','6':'G','8':'B','7':'T'})
 
 # ----------------------------
-# Utilidades de E/S
+# Utilitat per assegurar que una carpeta existeix
 # ----------------------------
 def ensure_dir(p: str):
     os.makedirs(p, exist_ok=True)
 
+# ----------------------------
+# Dibuixa caixes i text sobre la imatge original
+# ----------------------------
 def draw_overlay(img: np.ndarray, boxes: List[Tuple[int,int,int,int]], text: str) -> np.ndarray:
     out = img.copy()
     for i, (x,y,w,h) in enumerate(boxes):
@@ -76,7 +78,7 @@ def draw_overlay(img: np.ndarray, boxes: List[Tuple[int,int,int,int]], text: str
     return out
 
 # ----------------------------
-# 1) Binarización
+# Binaritza la imatge (posa el text en blanc i fons en negre)
 # ----------------------------
 def binarizar(placa_bgr: np.ndarray) -> np.ndarray:
     g = cv2.cvtColor(placa_bgr, cv2.COLOR_BGR2GRAY)
@@ -88,15 +90,15 @@ def binarizar(placa_bgr: np.ndarray) -> np.ndarray:
     bw = cv2.medianBlur(bw, 3)
     bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((3,3), np.uint8), 1)
     bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, np.ones((3,3), np.uint8), 1)
-    return bw  # texto blanco (255), fondo negro (0)
+    return bw
 
 # ----------------------------
-# 2) Segmentación por contornos → cajas de chars
+# Troba les caixes dels caràcters dins la imatge binaritzada
 # ----------------------------
 def segmentar_chars(bw: np.ndarray) -> List[Tuple[int,int,int,int]]:
     H, W = bw.shape
 
-    # Posible franja azul "EU" a la izquierda: si hay mucha tinta, bórrala
+    # Esborrem la banda esquerra si sembla tenir massa "tinta" (sovint és la banda blava EU)
     left_band = int(0.10 * W)
     if left_band > 0 and (bw[:, :left_band] > 0).sum() > 0.03 * H * left_band:
         bw[:, :left_band] = 0
@@ -107,14 +109,15 @@ def segmentar_chars(bw: np.ndarray) -> List[Tuple[int,int,int,int]]:
         x, y, w, h = cv2.boundingRect(c)
         ar = w / float(h + 1e-6)
         area = w * h
+        # Filtratge perquè només ens quedem amb caixes raonables
         if h < 0.30*H or h > 0.98*H:       continue
         if w < 0.012*W or w > 0.50*W:      continue
         if ar < 0.12   or ar > 1.35:       continue
         if area < 0.004*H*W:               continue
-        if x+w > 0.99*W and w > 0.03*W:    continue  # borde derecho
+        if x+w > 0.99*W and w > 0.03*W:    continue
         boxes.append((x,y,w,h))
 
-    # fallback ligero si no detecta nada
+    # Si no hem trobat res, fem un intent extra dilatant la imatge
     if not boxes:
         bw2 = cv2.dilate(bw, np.ones((3,2), np.uint8), 1)
         cnts, _ = cv2.findContours(bw2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -133,7 +136,7 @@ def segmentar_chars(bw: np.ndarray) -> List[Tuple[int,int,int,int]]:
 
     boxes.sort(key=lambda b: b[0])
 
-    # Si hay más de 7, quedarnos con los 7 más "coherentes" en altura
+    # Si tenim més de 7 caixes, ens quedem amb les que tenen altures més semblants
     if len(boxes) > 7:
         hs = np.array([h for (_,_,_,h) in boxes], dtype=np.float32)
         med = float(np.median(hs))
@@ -141,7 +144,7 @@ def segmentar_chars(bw: np.ndarray) -> List[Tuple[int,int,int,int]]:
         idx = np.argsort(scores)[-7:]
         boxes = [boxes[i] for i in sorted(idx, key=lambda k: boxes[k][0])]
 
-    # Si hay menos de 7, intentar partir cajas anchas (dobles)
+    # Si en tenim menys de 7, potser hi ha caixes dobles i s’han de partir
     if len(boxes) < 7:
         boxes = _split_cajas_anchas(bw, boxes)
         if len(boxes) > 7:
@@ -149,6 +152,9 @@ def segmentar_chars(bw: np.ndarray) -> List[Tuple[int,int,int,int]]:
 
     return boxes
 
+# ----------------------------
+# Aquesta funció intenta partir caixes massa amples (potser són dos caràcters junts)
+# ----------------------------
 def _split_cajas_anchas(bw: np.ndarray, boxes: List[Tuple[int,int,int,int]]) -> List[Tuple[int,int,int,int]]:
     out = []
     for (x,y,w,h) in sorted(boxes, key=lambda b:b[0]):
@@ -156,7 +162,8 @@ def _split_cajas_anchas(bw: np.ndarray, boxes: List[Tuple[int,int,int,int]]) -> 
             roi = bw[y:y+h, x:x+w]
             col_sum = (roi > 0).sum(axis=0)
             if col_sum.size < 6:
-                out.append((x,y,w,h)); continue
+                out.append((x,y,w,h))
+                continue
             m = h//6
             inner = col_sum[m:-m] if (w-2*m)>3 else col_sum
             cut = int(np.argmin(inner)) + (m if (w-2*m)>3 else 0)
@@ -169,12 +176,12 @@ def _split_cajas_anchas(bw: np.ndarray, boxes: List[Tuple[int,int,int,int]]) -> 
     return out
 
 # ----------------------------
-# 3) Normalización de recortes
+# Normalitzem cada caràcter a mida 64x64, afegint padding i centrant-lo
 # ----------------------------
 def recorte_normalizado(bw: np.ndarray, box: Tuple[int,int,int,int]) -> np.ndarray:
     x,y,w,h = box
-    roi = bw[y:y+h, x:x+w]                # blanco=texto
-    p = max(1, int(0.08*max(w,h)))        # padding proporcional
+    roi = bw[y:y+h, x:x+w]
+    p = max(1, int(0.08*max(w,h)))
     roi = cv2.copyMakeBorder(roi, p,p,p,p, cv2.BORDER_CONSTANT, value=0)
     H, W = roi.shape
     scale = min(CHAR_H/float(H), CHAR_W/float(W))
@@ -184,17 +191,15 @@ def recorte_normalizado(bw: np.ndarray, box: Tuple[int,int,int,int]) -> np.ndarr
     y0 = (CHAR_H - nh)//2
     x0 = (CHAR_W - nw)//2
     canvas[y0:y0+nh, x0:x0+nw] = rs
-    # EasyOCR acepta BGR; convertimos
     return cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR)
 
 # ----------------------------
-# 4) Clasificación EasyOCR carácter a carácter
+# Fa el reconeixement amb EasyOCR per cada caràcter, i aplica correccions si cal
 # ----------------------------
 def clasificar_chars(reader: easyocr.Reader, char_imgs: List[np.ndarray]) -> str:
     pred = []
     for i, chimg in enumerate(char_imgs):
         allow = DIGITOS if i < 4 else LETRAS
-        # detail=0 → solo texto; restrictivo con allowlist
         txts = reader.readtext(
             chimg, detail=0, paragraph=False, allowlist=allow,
             text_threshold=0.5, low_text=0.3, link_threshold=0.3, mag_ratio=2.0,
@@ -207,7 +212,7 @@ def clasificar_chars(reader: easyocr.Reader, char_imgs: List[np.ndarray]) -> str
             ch = allow[0] if allow else "?"
         pred.append(ch or "?")
 
-    # Correcciones suaves por grupo
+    # Correccions habituals de confusions
     for i in range(7):
         if i < 4 and pred[i]:
             pred[i] = pred[i].translate(MAPA_DIG)
@@ -216,7 +221,7 @@ def clasificar_chars(reader: easyocr.Reader, char_imgs: List[np.ndarray]) -> str
     return "".join(pred)
 
 # ----------------------------
-# 5) Proceso por imagen
+# Procés complet per a una sola imatge
 # ----------------------------
 def process_image(reader, img_path: str, out_dir: str) -> Tuple[str, str]:
     name = os.path.splitext(os.path.basename(img_path))[0]
@@ -236,59 +241,49 @@ def process_image(reader, img_path: str, out_dir: str) -> Tuple[str, str]:
         char_imgs = [recorte_normalizado(bw, b) for b in boxes]
         raw = clasificar_chars(reader, char_imgs)
 
-        # Forzar patrón 4+3
+        # Ens assegurem que té format 4 xifres + 3 lletres
         digs = ''.join(ch for ch in raw[:4] if ch in DIGITOS).ljust(4, '?')
         lets = ''.join(ch for ch in raw[4:7] if ch in LETRAS).ljust(3, '?')
         matricula = digs + lets
 
-        # Guardar crops
+        # Guardem els recorts dels caràcters
         crop_dir = os.path.join(out_dir, "crops", name)
         ensure_dir(crop_dir)
         for i, ch in enumerate(char_imgs):
             cv2.imwrite(os.path.join(crop_dir, f"{i}_{(matricula[i] if i < len(matricula) else '?')}.png"), ch)
 
-    # Guardar overlay y txt
+    # Guardem imatge amb caixes i text detectat
     ov = draw_overlay(img, boxes, matricula if matricula else "NO_READ")
     ensure_dir(os.path.join(out_dir, "overlays"))
     cv2.imwrite(os.path.join(out_dir, "overlays", f"{name}.jpg"), ov)
+    
+    # Guardem la matrícula detectada en un .txt
     with open(os.path.join(out_dir, f"{name}.txt"), "w", encoding="utf-8") as f:
         f.write((matricula or "") + "\n")
 
     return name, matricula
 
 # ----------------------------
-# 6) Main
+# Punt d’entrada principal del script
 # ----------------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in_dir",  type=str, default=IN_DIR_DEFAULT, help="Carpeta con imágenes de placas recortadas")
-    ap.add_argument("--out_dir", type=str, default=OUT_DIR_DEFAULT, help="Carpeta de salida")
-    ap.add_argument("--gpu",     action="store_true", help="Usar GPU si está disponible")
+    ap.add_argument("--in_dir",  type=str, default=IN_DIR_DEFAULT, help="Carpeta amb imatges de plaques")
+    ap.add_argument("--out_dir", type=str, default=OUT_DIR_DEFAULT, help="Carpeta de sortida")
+    ap.add_argument("--gpu",     action="store_true", help="Fer servir GPU si està disponible")
     args = ap.parse_args()
 
     ensure_dir(args.out_dir)
 
-    # Inicializar EasyOCR (inglés/latin es suficiente para dígitos y mayúsculas)
+    # Inicialitzem EasyOCR (amb anglès n’hi ha prou per números i lletres en majúscules)
     reader = easyocr.Reader(['en'], gpu=args.gpu, verbose=False)
 
-    # Buscar imágenes (recursivo en subcarpetas)
+    # Busquem totes les imatges dins la carpeta
     base = Path(args.in_dir)
     paths: List[str] = []
     for pat in IMG_GLOBS:
         paths.extend(str(p) for p in base.rglob(pat))
     paths = sorted(set(paths))
-
-    if not paths:
-        print(f"[WARN] No se encontraron imágenes en {base.resolve()}")
-        print("Verifica la ruta, extensiones y si las imágenes están en subcarpetas.")
-        # Aún así generamos CSV vacío y archivos de lista
-        pd.DataFrame([], columns=["image","plate"]).to_csv(os.path.join(args.out_dir, "results.csv"), index=False, encoding="utf-8")
-        open(os.path.join(args.out_dir, "all.txt"), "w", encoding="utf-8").close()
-        open(os.path.join(args.out_dir, "unique.txt"), "w", encoding="utf-8").close()
-        print(f"[OK] Imágenes procesadas: 0")
-        print(f"[OK] Resultados: {os.path.abspath(args.out_dir)}")
-        print(" - results.csv\n - all.txt / unique.txt\n - overlays/*.jpg\n - crops/<img>/*.png\n - <img>.txt")
-        return
 
     rows = []
     t0 = time.time()
@@ -296,7 +291,7 @@ def main():
         name, plate = process_image(reader, p, args.out_dir)
         rows.append({"image": name, "plate": plate})
 
-    # CSV global + listas
+    # Guardem CSV i llistes de matrícules
     df = pd.DataFrame(rows)
     df.to_csv(os.path.join(args.out_dir, "results.csv"), index=False, encoding="utf-8")
     all_txt  = os.path.join(args.out_dir, "all.txt")
@@ -310,9 +305,12 @@ def main():
             f.write(u + "\n")
 
     dt = time.time() - t0
-    print(f"[OK] Imágenes procesadas: {len(paths)} en {dt:.2f}s")
-    print(f"[OK] Resultados: {os.path.abspath(args.out_dir)}")
-    print(" - results.csv\n - all.txt / unique.txt\n - overlays/*.jpg\n - crops/<img>/*.png\n - <img>.txt")
+    print(f"[OK] Resultats guardats a: {os.path.abspath(args.out_dir)}")
 
+
+# ----------------------------
+# Executem el main si el script es crida directament
+# ----------------------------
 if __name__ == "__main__":
     main()
+
