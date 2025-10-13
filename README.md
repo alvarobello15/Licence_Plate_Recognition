@@ -61,15 +61,3 @@ The next example runs OCR and evaluation using a CSV ground truth with custom co
 ```bash
 python OCR_Def.py --in_dir "./data/plates" --out_dir "./out/ocr_eval" --gt_path "./groundtruth.csv" --gt_image_col "foto" --gt_plate_col "matricula"
 ```
-
-# File conventions
-
-The results.csv file includes the columns image and plate, the per-position predictions p0 to p6, the per-position confidences c0 to c6, and the raw EasyOCR outputs raw0 to raw6. The overlays directory contains one image per input with detected boxes and the final text rendered on top. The crops directory contains normalized character images named with their position and the chosen character, which helps manual audits and quick error analysis.
-
-# Roadmap
-
-Future work may include optional deskew and geometric normalization, a simple HTML report for batch browsing, configurable character sets for other national formats, and lightweight ensembling across multiple OCR passes to stabilize low-confidence positions.
-
-# License
-
-Include the license that best fits your project. MIT, Apache-2.0, or GPL-3.0 are common choices for utilities of this kind.
