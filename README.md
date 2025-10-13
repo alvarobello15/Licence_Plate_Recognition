@@ -1,6 +1,6 @@
 # License Plate OCR (offline, character by character)
 
-This repository provides an offline pipeline to read modern Spanish and EU license plates in the DDDDLLL pattern from already cropped images. The project combines a deterministic segmentation and per‑character OCR approach with EasyOCR and optional evaluation against ground truth, and includes complementary YOLOv8 scripts to detect and crop license plates from full images before running OCR. Everything runs locally without cloud dependencies and produces reproducible artifacts for inspection and reporting.
+This repository provides an offline pipeline to read modern Spanish liscence plates. The project combines a deterministic segmentation and per‑character OCR approach with EasyOCR and optional evaluation against ground truth, and includes complementary YOLOv8 scripts to detect and crop license plates from full images before running OCR. Everything runs locally without cloud dependencies and produces reproducible artifacts for inspection and reporting.
 
 # What this repository contains
 
@@ -55,7 +55,7 @@ When you provide a CSV or Excel ground truth, the OCR scripts merge results by t
 
 `OCR_Def.py` is the main OCR pipeline that performs binarization, segmentation, normalization, and per‑character recognition with EasyOCR, saving overlays, crops, a per‑image text file, a CSV with predictions and confidences, and list files of all and unique predictions. It optionally evaluates against ground truth when you pass a CSV or XLSX file and writes a metrics folder with summaries and plots.
 
-`OCR_Def_with_metrics(1).py` is a variant of the main OCR script focused on explicit metric reporting. It keeps the same pipeline and outputs but emphasizes the generation of confusion matrices, character‑level reports, and ROC/AUC graphics inside an out_dir/metrics folder, which is convenient when the primary goal is auditing and reporting.
+`OCR_Def_with_metrics.py` is a variant of the main OCR script focused on explicit metric reporting. It keeps the same pipeline and outputs but emphasizes the generation of confusion matrices, character‑level reports, and ROC/AUC graphics inside an out_dir/metrics folder, which is convenient when the primary goal is auditing and reporting.
 
 `OCR_Def_kfold.py` extends the evaluation to K‑Fold analysis using the intersection between results and ground truth. It computes exact‑match and character accuracy per fold, writes a textual summary with mean and standard deviation, and produces simple bar plots that visualize per‑fold performance to understand stability across splits.
 
@@ -75,9 +75,6 @@ The `--in_dir` argument selects the input folder and is scanned recursively. The
 
 Results are best when the plate region is tightly cropped, sharp, and not heavily skewed. The method tolerates illumination gradients and removes the left EU band when necessary, but strong motion blur or decorative fonts will reduce segmentation quality. The seven boxes are ordered left to right and the prediction is constrained to four digits followed by three letters, which matches modern Spanish plates and prevents vowels, Q, or Ñ from appearing in letter positions. When no images are found the script still creates an empty CSV and list files so that downstream steps remain robust.
 
-# Known limitations
-
-The current implementation assumes the DDDDLLL format and a restricted letter set that excludes vowels, Q, and Ñ. It does not correct heavy perspective distortion and does not search for plates inside larger scenes because it expects already cropped plate images. Severe occlusion, weathering, or custom fonts may require adjusting segmentation thresholds or adding a deskew step before running the OCR stage.
 
 # Example commands
 
