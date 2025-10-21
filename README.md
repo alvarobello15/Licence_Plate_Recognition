@@ -173,16 +173,6 @@ All artifacts are versionable, enabling inspection and reporting.
 
 Universitat Autònoma de Barcelona — 2025
 
-# Acknowledgements
-
-* **Ultralytics YOLOv8** for detection
-* **EasyOCR** for recognition
-* **Roboflow** dataset for detector training
-
-# How to cite
-
-Suggested citation:  
-Cases, M., Bello, Á., Fuster, A., & Kumar, N. (2025). *License Plate OCR (offline, character by character)*. GitHub repository. https://github.com/alvarobello15/Licence_Plate_Recognition
 
 
 
