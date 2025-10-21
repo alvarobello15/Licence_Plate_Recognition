@@ -1,5 +1,5 @@
 
-# License Plate OCR (offline, character by character)
+# License Plate OCR
 
 This repository provides an offline pipeline to read modern Spanish liscence plates. The project combines a deterministic segmentation and per-character OCR approach with EasyOCR and optional evaluation against ground truth, and includes complementary YOLOv8 scripts to detect and crop license plates from full images before running OCR. Everything runs locally without cloud dependencies and produces reproducible artifacts for inspection and reporting.
 
